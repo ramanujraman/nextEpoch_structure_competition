@@ -38,10 +38,28 @@ class RNA_embedding(nn.Module):
 
 class ResBlock(nn.Module):
 
-    def __init__(self, in_channel, out_channel):
+    def __init__(self, in_channel):
+        super(ResBlock, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channel, in_channel, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(in_channel, out_channel, kernel_size=3, padding=1)
+        self.conv2 = nn.Conv2d(in_channel, in_channel, kernel_size=3, padding=1)
+
+        self.batch_norm1 = nn.BatchNorm2d(num_features=in_channel)
+        self.batch_norm2 = nn.BatchNorm2d(num_features=in_channel)
+
+        self.relu = nn.ReLU()
+
+    def forward(self, input):
+
+        x = self.batch_norm1(self.conv1(input))
+
+        x = self.relu(x)
+
+        x = self.batch_norm2(self.conv2(x))
+
+        x += input
+
+        return x
 
 # This is the class to be developed !
 class RNA_net(nn.Module):
@@ -51,27 +69,54 @@ class RNA_net(nn.Module):
 
         self.embedding = RNA_embedding(embedding_dim)
 
-        self.conv1 = nn.Conv2d(embedding_dim, embedding_dim, kernel_size=3, padding=1)
-        self.conv2 = nn.Conv2d(embedding_dim, embedding_dim, kernel_size=3, padding=1)
-        self.conv3 = nn.Conv2d(embedding_dim, embedding_dim, kernel_size=3, padding=1)
+        self.module1 = nn.Sequential(
+                                        ResBlock(embedding_dim),
+                                        ResBlock(embedding_dim),
+                                        ResBlock(embedding_dim),
+                                        ResBlock(embedding_dim),
+                                    )
+        self.conv1 = nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=3, padding=1)
+        
+        self.module2 = nn.Sequential(
+                                        ResBlock(embedding_dim//2),
+                                        ResBlock(embedding_dim//2),
+                                        ResBlock(embedding_dim//2),
+                                        ResBlock(embedding_dim//2),
+                                    )
+        self.conv2 = nn.Conv2d(embedding_dim//2, embedding_dim//4, kernel_size=3, padding=1)
+        
+        self.module3 = nn.Sequential(
 
-        self.conv4 = nn.Conv2d(embedding_dim, embedding_dim//2, kernel_size=3, padding=1)
-        self.conv5 = nn.Conv2d(embedding_dim//2, embedding_dim//2, kernel_size=3, padding=1)
-        self.conv6 = nn.Conv2d(embedding_dim//2, 1, kernel_size=3, padding=1)
+                                        ResBlock(embedding_dim//4),
+                                        ResBlock(embedding_dim//4),
+                                        ResBlock(embedding_dim//4),
+                                        ResBlock(embedding_dim//4),
+                                    )
+        self.conv3 = nn.Conv2d(embedding_dim//4, embedding_dim//8, kernel_size=3, padding=1)
+        
+        self.module4 = nn.Sequential(
+
+                                        ResBlock(embedding_dim//8),
+                                        ResBlock(embedding_dim//8),
+                                        ResBlock(embedding_dim//8),
+                                        ResBlock(embedding_dim//8),
+                                    )
+        self.conv4 = nn.Conv2d(embedding_dim//8, 1, kernel_size=3, padding=1)
+
+
 
         # Your layers here
 
     def forward(self, x):
         # x is (N, L)
-        _, m = self.embedding(x) 
-        # m is (N, d, L, L)
+        _, m = self.embedding(x) # (N, d, L, L)
 
-        m = self.conv1(m) # (N, 1, L, L)
-        m = self.conv2(m)
-        m = self.conv3(m)
-        m = self.conv4(m)
-        m = self.conv5(m)
-        m = self.conv6(m)
+        m = self.conv1(self.module1(m)) # (N, 1, L, L)
+        m = self.conv2(self.module2(m))
+        m = self.conv3(self.module3(m))
+        m = self.conv4(self.module4(m))
+
 
         output = m.squeeze(1) # output is (N, L, L)
+        output = 0.5*(output.permute(0,2,1) + output)
         return output
